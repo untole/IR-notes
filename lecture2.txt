@@ -1,0 +1,268 @@
+term  n. 术语；学期；期限；条款；(代数式等的)项
+  ==>此处为 词项 的意思
+token 词条
+----------------------------------------------------------------------------------------------------------------------
+
+
+内容
+	term vocabulary 预处理
+		-documents     (文件
+		-tokenization  (token化
+		-what terms do we put in the index?
+		
+	关于 postings
+		-faster merges
+		-poisional postings and phrase queries
+		
+		
+-------------------------MAIN----------------------------------------------------------------------------------
+
+term vocabulary预处理:
+Step:
+	1.收集待建索引的原文档(Document)
+	2.将原文档传给词条化工具(Tokenizer)进行文本词条化
+	3.将第二步得到的词条(Token)传给语言分析工具(Linguistic modules)进行语言学预处理，得到词项(Term)
+	4.将得到的词项(Term)传给索引组件(Indexer),建立倒排索引
+	
+-------------------------STEP-----------------------------------------------------------------------------------
+Documents 文档处理
+	-文档格式
+	- 文档语言
+	- 文档使用的字符集
+	- these tasks are often done heuristically..
+	(启发式方法(不特指算法)，是用于解决问题的某种符合实际能满足需求但不能保证最优的方法。
+	 在不可能得到或者很难得到问题的最优解时，启发式方法是能够加速得到可用解的高效方法。)
+	
+	(课件中提出了多样化的复杂的问题便调向下一个:Tokenizer)	
+	 
+	From blogs: 
+	- 文档分析以及编码转换
+	- 语言识别、编码方式识别、文件格式等处理，得到字符序列。
+	- 如何确定索引的单位？ 合理组织"索引粒度"，确定文档单位
+		注：语言识别和编码识别，理论上都可以看成是分类问题，基于分类方法进行处理。
+			但实际中，常采用启发式方法
+			
+===========================================================================
+(语文功底太差..)
+Tokenizer 词条化工具 进行 Tokenization
+	token的定义是？如何判定是一个token？ 
+	- San Francisco OR San & Francisco ?
+	- index Numbers
+	- language issues
+		- 外语的一些..
+		- 中文日文字直接没有空格区分
+			- 导致词条化的多样性(比英文多很多..)
+		- 各种语言需要考虑的问题()
+	
+Stop words(停止列表)的概念：
+	根据停用词表(stop list)(预先), 将那些最常见的词从词典中去掉。比如直观上可以去掉：
+		- 一般不包含语义信息的词: the, a, and, to, be
+		- 汉语中的"的"、"得"、"地"等等。
+		- 这些词都是高频词: 前30个词就占了约30%的倒排记录表空间
+		
+	"将那些最常见的词从词典中去掉"的本意是：
+		去掉多余的(或大几率事先知道有的)，以节约index时间(如is 与 a的 AND操作)
+		但稍微想想就知道，去掉这个的优化十分微小(对于庞大的总操作量)，而且会有不确定的意外因素
+		
+	But the trend is away from doing this
+	但是现在并不推荐使用这个方法：
+		- 良好的压缩技术意味着在系统中包含停止字的空间非常小
+		       (lecture 5中)
+		- 良好的查询优化技术意味着在查询时包含停止字的时间代价很低
+		       (lecture 7中)
+		- 你会使用这些词：
+			- 短语查询           : "King of Denmark"
+			- 歌曲名或者台词等等 : "Let it be", "To be or not to be"
+			- "关系型" 查询      : "flights to London"
+
+=========================================================================
+Normalization to terms 词条归一化
+	对索引文本中的单词进行规范化，并将查询词(queries)也转化为相同的格式
+	
+	结果便获得了词条：
+		A term(词条) is a (normalized) word type,
+			which is an entry in our IR system dictionary.
+		
+	通常隐式地定义等价类的 terms：
+		- 去掉中间的句点  . (periods)
+		- 去掉连接符      -
+		
+	日期表格等事物的格式化
+		- 7月30日 vs. 7/30
+	
+	Tokenization 和 Normalization 可能依赖于语言，因此和语言检测交织在一起
+	
+	注意的是：和第一句提到的一样，indexd text 和 qurey terms 都应该被规范化到相同格式
+	
+	Case Folding：
+		-全都字母变为小写(reduce all to lower case)
+		
+    另一个可选的方法就是等价类不对称展开
+	     (ENTER)              (SEARCH)
+		- window		=>		window windows 
+		- windows    =>		window Window Windows
+		- Windows    =>		Windows
+	
+		会使索引更强大，但是效率会更低
+		
+	手工构造等价类：
+		car & automobile         color & colour
+		    (同义词)	        (同义词、英式美式)
+	    用它：
+			- 重写等类项：如果文件里面有car，在其下也index automobile(意思是加上？)反之亦然
+			- 扩展查询  ：如果 qurey terms中有car,加上 automobile ，反之亦是
+	    
+		由于拼写错误形成的等价类：在 lecture 3~9中
+		
+	进行词条归一化处理之后在很多情况下会提高检索的效果，但有时也可能会损害检索的效果。
+	（C.A.T ----> cat    C.A.T和cat的意思完全不一样）
+	
+		
+Lemmatization 词形归并
+	- 全部转化为基本形式(base form):
+		E.g.
+			- am,is,are		=>be
+			- the boy's cars are different colors → the boy car be different color
+		
+		
+stemming 词干还原
+	
+	- 对于有相同词根的，全都 reduce terms to their "roots" before indexing	
+	
+	- Porter’s algorithm 波特算法
+		Example rules
+			- sses → ss (caresses → caress)
+			- ies → i (ponies → poni)
+			- (m>1) ement → (replacement → replac; cement → cement)
+			
+		未有详细或原理
+	- 其他 stemmers	(上面是一个)
+	- 对英语好坏参半：可以帮助回忆(recall)某些查询	
+	                  但是对查询的准确性会有影响(相同词根的不同词涉及的大致意思领域可能有很大不同)
+      对一些语言像是 西班牙语 德语 芬兰语 有很大用处
+
+语言有很多特性(某语言特有)						
+	开放源码和使用插件都有很大帮助
+	
+-------------------------FAST MERGES-----------------------------------------------------------------
+进行查找时的merge方法(用于postings，lecture 1中)
+
+Fast postings merges：
+
+	skip pointers / skip lists
+	
+    Query processing with skip pointers(使用跳跃指针的查询处理):
+		- 原理：利用postings的有序性，通过设置一定间隔的skip pointers来达到快速跳过一定区间的目的
+		        每次skip的距离可能很小，考虑到两两merge时得到的结果很小，发现可以跳过大量区间
+				与原方法 双指针依次遍历 优化是巨大的
+		- 平衡：skip pointers 每次跳跃的距离间隔的选择是重要的
+		        小了：虽然仍能跳过大量区间，但是比较次数变多
+				      极端情况下(为1)和原方法一样
+				大了：skip失败的可能性变大
+				
+		- 启发：对于长度为 L 的postings，使用 sqrt(L)（L的开方） 作为跳跃的间隔
+		- 使用：适用于静态索引
+		        动态索引则十分困难
+
+当然还有其他的查询算法：二分查找，二叉树查找等等
+
+-------------------------Phrase Query-----------------------------------------------------------------
+短语查询
+
+
+============================================================
+Solution 1：
+	
+Biword indexes(第一次的尝试)
+	将文本中每一对连词都作为短语索引
+		
+	注释：1.以上的每一对连词，现在都作为了dictionary中的基本term
+		  2.在以上的过程中，两个字符短语的查询是即时的(  )
+			  
+	更长的短语查询：
+		将更长的短语拆分为多个 双词语(连词)短语，并进行布尔查询(on biwords)
+		(限制，查询出来的东西究竟有没有包含原短语是个未知数)
+		
+接着：
+    Extended BiwordS 扩展双语
+		- 将一句话中的有关联(相关)的名词提出并组合作为双语
+		- 标记 名词(N)
+		       冠词介词(X)
+			   两个名词(N)之间有若干个X，认为它们相关(具体的具体做)
+		- 仍使用上述的布尔查询的方法
+		- E.g. E.g. cost overruns on a power plant
+					"cost overruns" AND "overruns power" AND "power plant"
+					
+	扩展双语中的每一个现在也在dictionary中
+					
+限制：
+	- false postives (上面提过)
+	- 索引表的膨胀，字典过大
+	- Biword indexes 不是标准解决方法，应该在复合方法中使用
+
+============================================================
+Solution 2:
+
+Positional indexes:
+	将每一个term在每一个doc中的pos依次记录下来
+		term1：doc_ID_1：<pos1,pos2,pos3...>; doc_ID_2：<pos1,pos2...>;..;
+		term2:...
+        ...
+	
+	适用情况：
+		E.g.  to be or not to be 短语查询
+		      注意到充分条件是，be 的 pos_postings中存在一个doc中有两个pos的差值为4；
+			  
+	但是我们不仅仅要处理这标准的相等的情况。
+	通过上面的方法(三行前)
+		处理查询短语：
+			- 找到每一个拆出来的term的 pos_postings
+			- 进行merge 找到适合的 doc的 ID
+	
+    =========	
+临近搜索的方法一样(Same general method for proximity searches)
+
+如：被 Normalization后的一个 qurey phrase:
+     
+	LIMIT! /3 STATUTE /3 FEDERAL /2 TORT         ----------(x)
+    (应该..)  (x)式中 ! 为截断，
+			  被处理后的(x)式中只剩下名词 /k 为两个名字直接相差的词数 (用来判断两个词的相关程度??)
+			  
+    很明显 Positional indexes方法可以对这个 qurey进行查询
+	    而 Biword indexes 方法不可以
+		
+	=========
+
+Positional indexes Size
+	关于储存的大小：
+		使用这个方法，pos_postings的储存所需的空间一般是普通postings的2~4倍
+	
+	缺点：更大的储存空间，原本的数据量规模就很大，现在大了更多！
+	      (原postings 中只有docID，现在还要每个doc中的pos，相当于增加了位置、总数两个参数)
+	
+	优化：数据处理压缩(in lecture 5)
+	
+	必要性：短语和临近性查询的强大和有用性，使得 Positional indexes位置索引方法是标准方法
+
+============================================================
+上述两个方法的综合使用
+	比如 "Michael Jackson"的短语查询
+		用 Positional index 不会有良好的效率(明显)
+		此时使用Biwords直接查询会更好
+		
+更复杂的复合索引方法
+	Williams et al. (2004) evaluate a more sophisticated mixed indexing scheme
+	威廉斯等人 2004 开发 更复杂的混合 索引方法
+	(对比于位置索引法)
+	1.  1/4 time cost
+	2.  126% space cost
+				
+  	
+		
+		
+
+
+	
+	
+	
+	
